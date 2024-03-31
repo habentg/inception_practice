@@ -1,0 +1,163 @@
+
+I. DOCKER concepts and definitions:
+
+    ##. container vs VM differences:
+        * VM 
+            > is a full operating system that runs in hypervisor (such as hyperV or vmware)
+            > uses alot of system resources such as CPU, RAM etc.
+            > might need license for the os.
+            > slower to run, at start-up.
+            > needs software patching and updates (like every other os)
+            > portablity challenge. complex migrating from one one hyper to another one
+        * Container
+            > Doesnt need a dedicated full operating system. it shares the host os's kernel.
+                This means containerized Windows apps need a host with a Windows kernel, whereas
+                containerized Linux apps need a host with a Linux kernel. (can run linux container in windows with wsl)
+            > saves alot of resources and overhead costs of license and stuf.
+            > faster to run
+            > easly portable. moving a container from your laptop to the cloud to other computer or vm is easy.
+    ## Currently two type of containers based on the kernel they share:
+        1. Linux containers; application containerized with this needs linux kernel to run:
+            - vast majority of containers.
+            - smaller and faster as well as it has many tools and support communities.
+        2. Windows container:
+            - it runs windows apps that requir a host with Windows os.
+            - but with WSL (Windows Subsystem for Linux ) 2 installed
+    ## Docker as a techonology consists of this 3 things (starting from the lower thing in the docker "stack"):
+        1. The runtime:
+            -> responsible for managing container life-cycle; starting and stoping a container.
+            -> Operates at lowest level, interacts directly with the OS kernel and system resources. this allows docker to do task such as:
+                * process isolation.
+                * resources allocation and
+                * network management
+            -> docker relays on many OS features to provide containerization such as namespaces and control group (cgroup)
+                * OS namespaces:- provides  an isolated view of the filesystem, processes, and  network interface.
+                * Control group:-  cgroup allows docker to control and allocate system resources and enforce limit on how much each container uses.
+        2. The Deamon (aka the docker engine):
+            -> middle level, persistent background process form managing docker objects.
+            -> listnes for Docker API requests and manages container lifecycle.
+            -> we interact with this, when we do docker pull, docker push ... the docker deamon deligates the tasks to runtime to do it. 
+        3. The orchestrator:
+            -> tool for automating the deployment, management, scaling and networking of containerized applications across culuster of machines.
+            -> it helps in management of containers in distributed system, ensuring high availability, efficient resource utiliztion and fault tolerance.
+            -> helps with scheduling and load-balancing
+            -> ex. Kubernetees and Docker swarms (native to docker)
+    
+    ## Docker images and layers
+        -> the image is just a manifest file that lists the layers and some metadata.
+            The application and dependencies live in the layers and each layer is fully independent with no concept of being part of something bigger.
+        -> Docker takes care of the stacking and representes them as a single unified object.
+            * can see it when pulling an image from a registry, each layer is pulled independently.
+        -> Multiple images can, and do, share layers. This leads to efficiencies in space and performance.
+
+    ## Docker Containers
+        -> A container is the runtime instance of an image.
+
+    // containerization
+     => Some instructions create new layers whereas others just add metadata.
+        Examples of instructions that create new layers are FROM, RUN, and COPY. Examples that
+        create metadata include EXPOSE, WORKDIR, ENV, and ENTRYPOINT. 
+             ** The basic premise is this — if an instruction adds content such as files and programs, it will create a new layer.
+                If it is adding instructions on how to build the image and run the container, it will create metadata.
+
+        > run {docker history ddd-book:ch8.1} and see the size to see which instructions make layers and which are just metadata
+
+
+    // in containerization, big (size wise) means BAD! because:
+        -> slower
+        -> more potential vulnerabilities.
+        -> Less efficient use of system resources.
+        -> More difficult to manage security.
+        so, ... multi-build stage! Examples:
+        ````
+            FROM golang:1.20-alpine AS base
+            WORKDIR /src
+            COPY go.mod go.sum .
+            RUN go mod download
+            COPY . .
+
+            FROM base AS build-client
+            RUN go build -o /bin/client ./cmd/client
+
+            FROM base AS build-server
+            RUN go build -o /bin/server ./cmd/server
+
+            FROM scratch AS prod
+            COPY --from=build-client /bin/client /bin/
+            COPY --from=build-server /bin/server /bin/
+            ENTRYPOINT [ "/bin/server" ]
+        ````
+        in the above docker file example, we have FOUR From instructions, meaning we have four distinct build stages!
+        each stage outputs an image that will be used by the next stage, the intermediate images are then cleaned-up after the final build.
+<--------------------------------------------    Important Docker Commands:   -------------------------------------->
+
+1. Docker ps
+    -> checking for running containers
+    -> [Docker ps -a] gonna list all containers, running and stoped once.
+2. Docker search <image_name>
+    -> to check if an image is present in Docker Hub.
+3. Docker pull <image_name>
+    -> we can pull any image from Docker registry (Docker Hub) to use.
+    -> unless we specify a version, the leatest virsion will be pulled
+    -> <-a> if we pull with a flag, it downloads all the images in the repository
+4. docker images
+    -> to list all images present in our local machine
+
+After we pulled an image, for now, we can create a container from that image
+5. docker run -it --name <container_name> <image_name> <shell>
+    -> run - create and start the container
+    -> -it - docker will allocate a psuedo-tty (basicly means stdin/stdout/stderr streams) 
+        and let us interact with the container.
+    *-> -td - docker will allocate psude-tty, the container will run in "detached" mode in the background, independently!
+        - (see [docker attach] command to enter it later) 
+    -> --name <container_name> <image_name> - helps us to specfy a name for the container we are creating from the image
+    -> shell - since we will be in interactive mode, we need to specify a shell ex. /bin/bash
+    * this command will take us straight to the container. we can navigate inside using the cli
+    -> we can exit out using the cmd {exit}. it will stop the container.
+6. docker start <container_name>
+    -> using this command we can start a container (but we will not be inside, so we wont have access to its interactive cli)
+7. docker attach <container_name>
+    -> after we {docker start} it, we can enter that running container and access to its interactive cli
+    -> exit!
+8. docker stop <container_name>
+    -> we can stop it as well
+9. docker rm <container_name>
+    -> to remove stopped containers, (it doesnt work for running once)
+10. docker diff <container_name>
+    -> if we want to see the difference between the base image and the current state of the container
+11. docker commit <container_name> <new_image_name>
+    -> we can create an image from a container as well! Crazy
+
+if we want to build our own docker image, we can create a Dockerfile then ...
+12. docker build -t <image_name> .
+    -> docker build - a command that instructs docker to build an image from the dockerfile thats in the specified directory,
+        which in this case is the current working directory (.).
+    -> -t <image_name> - the flage is used to tag the new image with a name
+    -> after running the command, docker will execute the instruction in the Dockerfile and 
+        create an image with that specific name and tag.
+
+At this point:
+    * we can pull images from docker hub, 
+    * create a container as well as start (in both interactive and detached mode), stop it and remove it.
+    * We can also create an image from a container.
+    * we can create a docker file, build an image out of that and do all the above.
+NOW..... what if we want to push our image to a repository so others can use it,
+-> create a docker hub accout first.
+13. docker login
+    -> connect to your docker hub account from cli
+14. docker tag <image_name> <dockerhub_username/repository_name:version>
+    -> we have to tag the image we are trying to push
+    -> we can check it using {docker images} - should be present
+15 docker push <dockerhub_username/repository_name:version>
+    -> now check it in docker Hub
+    -> we can pull the image and edit and we can push it angain with "latest" as a default or give it a version
+// other Commands
+a. docker images --filter=reference="*:latest"
+    -  list only the latest images
+b. docker images --filter dangling=true
+    - will list all  the dangling images i.e., not named and taged image
+c. docker search alpine --filter "is-official=true"
+    - filter official images from the result of <docker search alpine >
+d. docker inspect ubuntu:latest
+    - gives detailed information about the image like architecture
+<--------------------------------------------    Important Docker Commands:   -------------------------------------->
